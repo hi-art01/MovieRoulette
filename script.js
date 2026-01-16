@@ -14,7 +14,7 @@ const customUrlInput = document.getElementById('custom-url');
 // IMPORTANT: This is the user's API key. DO NOT commit this to a public repository!
 // Replace this with a secure method like an environment variable before publishing.
 // ************************************************************************************
-const apiKey = 'e79d6a70';
+const apiKey = ' If so, you can get a free key by visiting their website at https://www.omdbapi.com/apikey.aspx.';
 const apiUrl = `https://www.omdbapi.com/?apikey=${apiKey}`;
 
 // --- Genre Options ---
