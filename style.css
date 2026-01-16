@@ -1,0 +1,88 @@
+body {
+    font-family: sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+header {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+h1 {
+    color: #333;
+}
+
+main {
+    width: 100%;
+    max-width: 800px;
+    text-align: center;
+}
+
+#movie-display {
+    margin-bottom: 20px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#movie-display img {
+    max-width: 200px;
+    border-radius: 4px;
+}
+
+#find-movie-btn, #settings-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    background-color: #007bff;
+    color: white;
+}
+
+#settings-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.hidden {
+    display: none;
+}
+
+#settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#settings-form label {
+    font-weight: bold;
+}
+
+#settings-form input, #settings-form select, #settings-form button {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+#settings-form button {
+    background-color: #28a745;
+    color: white;
+    cursor: pointer;
+}

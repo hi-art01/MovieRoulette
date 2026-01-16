@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Movie Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Random Movie Generator</h1>
+        <button id="settings-btn">Settings</button>
+    </header>
+
+    <main>
+        <div id="movie-display">
+            <p>Click "Find a Movie" to get your first suggestion!</p>
+        </div>
+        <button id="find-movie-btn">Find a Movie</button>
+    </main>
+
+    <div id="settings-panel" class="hidden">
+        <h2>Settings</h2>
+        <form id="settings-form">
+            <label for="genre">Genre:</label>
+            <select id="genre" name="genre">
+                <!-- Genre options will be populated here -->
+            </select>
+
+            <label for="start-year">Start Year:</label>
+            <input type="number" id="start-year" name="start-year" min="1900" max="2024">
+
+            <label for="end-year">End Year:</label>
+            <input type="number" id="end-year" name="end-year" min="1900" max="2024">
+
+            <label for="custom-url">Custom URL:</label>
+            <input type="url" id="custom-url" name="custom-url" placeholder="https://www.example.com">
+
+            <button type="submit">Save</button>
+        </form>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
