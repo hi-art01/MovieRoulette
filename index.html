@@ -3,216 +3,302 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Airplane Fighter</title>
+    <title>3D Fighter - NPC Combat</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
-        #gameCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        #hudCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-        #overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; color: white; background: rgba(0,0,0,0.8);
-            padding: 30px; border-radius: 15px; z-index: 10;
-            border: 2px solid #0f0;
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #gameCanvas { z-index: 1; }
+        #hudCanvas { z-index: 5; pointer-events: none; }
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; pointer-events: none;
         }
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #0f0; font-size: 24px; z-index: 11;
+        .overlay-box {
+            background: rgba(0, 0, 0, 0.85); color: #0f0; padding: 40px;
+            border: 3px solid #0f0; border-radius: 20px; text-align: center;
+            pointer-events: auto; max-width: 600px;
         }
+        h1 { margin-top: 0; letter-spacing: 4px; color: #fff; text-shadow: 0 0 10px #0f0; }
+        .controls-hint { font-size: 14px; color: #aaa; margin: 20px 0; line-height: 1.6; }
         button {
-            padding: 15px 30px; font-size: 20px; cursor: pointer;
-            background: #0f0; color: black; border: none; font-weight: bold;
-            margin-top: 20px;
+            background: #0f0; color: #000; border: none; padding: 15px 40px;
+            font-size: 24px; font-weight: bold; cursor: pointer; transition: 0.3s;
+            text-transform: uppercase;
         }
-        button:hover { background: #0c0; }
+        button:hover { background: #fff; box-shadow: 0 0 20px #0f0; }
+        #loading-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; color: #0f0; display: flex; align-items: center;
+            justify-content: center; font-size: 24px; z-index: 20;
+        }
     </style>
 </head>
 <body>
-    <div id="loading">INITIALIZING SYSTEMS... 0%</div>
-    <div id="overlay" style="display: none;">
-        <h1 id="status-title">AIR COMBAT COMMAND</h1>
-        <p id="status-msg">MISSION: DESTROY ENEMY FIGHTER & LAND AT BASE</p>
-        <p style="font-size: 14px;">MOUSE: Steering & Pitch | CLICK: Shoot | SHIFT/CTRL: Throttle | C: Camera</p>
-        <button id="start-btn">ENGAGE</button>
+    <div id="container">
+        <div id="loading-screen">INITIALIZING HANGAR... 0%</div>
+
+        <div id="ui-layer" style="display: none;">
+            <div id="start-overlay" class="overlay-box">
+                <h1>FIGHTER ACE</h1>
+                <p>MISSION: DESTROY THE ROGUE DRONE AND RETURN TO BASE.</p>
+                <div class="controls-hint">
+                    <b>W / S / A / D</b> or <b>ARROWS</b> to Pitch and Roll<br>
+                    <b>MOUSE</b> to Steer (Click for Pointer Lock)<br>
+                    <b>SPACE</b> or <b>LEFT CLICK</b> to Fire Machine Guns<br>
+                    <b>SHIFT / CTRL</b> to Adjust Throttle<br>
+                    <b>C</b> to Change Camera View
+                </div>
+                <button id="start-button">Engage Engines</button>
+            </div>
+
+            <div id="game-over-overlay" class="overlay-box" style="display: none;">
+                <h1 id="result-title">MISSION FAILED</h1>
+                <p id="result-msg">Aircraft Destroyed.</p>
+                <button onclick="location.reload()">Return to Hangar</button>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+        <canvas id="hudCanvas"></canvas>
     </div>
-    <canvas id="gameCanvas"></canvas>
-    <canvas id="hudCanvas"></canvas>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <script>
-    const canvas = document.getElementById('gameCanvas');
-    const hudCanvas = document.getElementById('hudCanvas');
-    const ctx = hudCanvas.getContext('2d');
-    const overlay = document.getElementById('overlay');
-    const loadingDiv = document.getElementById('loading');
-    const startBtn = document.getElementById('start-btn');
+    const WORLD_SIZE = 15000;
 
-    // Resize canvases
-    function resize() {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        canvas.width = w; canvas.height = h;
-        hudCanvas.width = w; hudCanvas.height = h;
-        if (camera) {
-            camera.aspect = w / h;
-            camera.updateProjectionMatrix();
-        }
-        if (renderer) renderer.setSize(w, h);
-    }
-    window.addEventListener('resize', resize);
+    let gameActive = false;
+    let gameState = 'DOGFIGHT';
+    let planeModel = null;
+    let player = null;
+    let npc = null;
+    let bullets = [];
+    const keys = {};
+
+    const gameCanvas = document.getElementById('gameCanvas');
+    const hudCanvas = document.getElementById('hudCanvas');
+    const hudCtx = hudCanvas.getContext('2d');
+    const loadingScreen = document.getElementById('loading-screen');
+    const uiLayer = document.getElementById('ui-layer');
+    const startOverlay = document.getElementById('start-overlay');
+    const gameOverOverlay = document.getElementById('game-over-overlay');
+    const startButton = document.getElementById('start-button');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x88aabb);
-    scene.fog = new THREE.FogExp2(0x88aabb, 0.0003);
+    scene.background = new THREE.Color(0x6699cc);
+    scene.fog = new THREE.FogExp2(0x6699cc, 0.0001);
 
-    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 15000);
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    resize();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 30000);
+    const renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
 
-    let planeModel;
-    let player;
-    let npc;
-    let bullets = [];
-    let gameState = 'DESTROY_NPC';
-    let gameActive = false;
-    let worldSize = 10000;
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        hudCanvas.width = window.innerWidth;
+        hudCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', onWindowResize);
+    onWindowResize();
 
-    const keys = {};
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
-    window.addEventListener('mousedown', (e) => { if (e.button === 0) keys['Mouse0'] = true; });
-    window.addEventListener('mouseup', (e) => { if (e.button === 0) keys['Mouse0'] = false; });
+    window.addEventListener('mousedown', e => { if(e.button === 0) keys['Mouse0'] = true; });
+    window.addEventListener('mouseup', e => { if(e.button === 0) keys['Mouse0'] = false; });
 
-    canvas.addEventListener('mousedown', () => {
-        if (gameActive) canvas.requestPointerLock();
-    });
-
+    let mouseX = 0, mouseY = 0;
     window.addEventListener('mousemove', e => {
-        if (document.pointerLockElement === canvas && player) {
-            // Steering: Mouse X rotates Roll/Yaw, Mouse Y rotates Pitch
-            player.pitch += e.movementY * 0.002;
-            player.roll -= e.movementX * 0.004;
+        if (document.pointerLockElement === gameCanvas) {
+            mouseX = e.movementX;
+            mouseY = e.movementY;
         }
     });
 
-    startBtn.addEventListener('click', () => {
-        overlay.style.display = 'none';
-        gameActive = true;
-        canvas.requestPointerLock();
+    gameCanvas.addEventListener('mousedown', () => {
+        if (gameActive) gameCanvas.requestPointerLock();
     });
 
-    class Plane {
+    startButton.addEventListener('click', () => {
+        startOverlay.style.display = 'none';
+        gameActive = true;
+        gameCanvas.requestPointerLock();
+    });
+
+    function getTerrainHeight(x, z) {
+        const d = Math.sqrt(x*x + z*z);
+        let h = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 30;
+        if (d > WORLD_SIZE * 0.4) h += (d - WORLD_SIZE * 0.4) * 1.5;
+        return h;
+    }
+
+    function createWorld() {
+        const geometry = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 64, 64);
+        const positions = geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            const x = positions.getX(i);
+            const z = positions.getY(i);
+            positions.setZ(i, getTerrainHeight(x, -z));
+        }
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshStandardMaterial({ color: 0x447744, flatShading: true });
+        const terrain = new THREE.Mesh(geometry, material);
+        terrain.rotation.x = -Math.PI / 2;
+        scene.add(terrain);
+
+        const grid = new THREE.GridHelper(WORLD_SIZE, 40, 0x00ff00, 0x224422);
+        grid.position.y = 2;
+        scene.add(grid);
+
+        const runwayGroup = new THREE.Group();
+        const rwGeo = new THREE.PlaneGeometry(100, 1000);
+        const runway = new THREE.Mesh(rwGeo, new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        runway.rotation.x = -Math.PI / 2;
+        runwayGroup.add(runway);
+        for(let i = -500; i <= 500; i += 50) {
+            const light = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshBasicMaterial({color: 0x00ff00}));
+            light.position.set(-55, 5, i);
+            runwayGroup.add(light);
+            const lightR = light.clone(); lightR.position.x = 55;
+            runwayGroup.add(lightR);
+        }
+        runwayGroup.position.set(0, 10, 3000);
+        scene.add(runwayGroup);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5000, 10000, 5000);
+        scene.add(sun);
+    }
+
+    class Aircraft {
         constructor(isNPC = false) {
             this.isNPC = isNPC;
-            this.mesh = planeModel.clone();
-            scene.add(this.mesh);
+            this.mesh = new THREE.Group();
 
-            this.position = new THREE.Vector3(isNPC ? 500 : 0, 500, isNPC ? -800 : 0);
-            this.rotation = new THREE.Euler(0, isNPC ? Math.PI : 0, 0, 'YXZ');
-            this.speed = 40;
+            if (planeModel) {
+                const model = planeModel.clone();
+                this.mesh.add(model);
+            }
+
+            // Add visible box for both to be sure
+            const placeholder = new THREE.Mesh(
+                new THREE.BoxGeometry(4, 2, 10),
+                new THREE.MeshStandardMaterial({color: isNPC ? 0xff0000 : 0x0000ff, transparent: true, opacity: planeModel ? 0.3 : 1.0})
+            );
+            this.mesh.add(placeholder);
+
+            scene.add(this.mesh);
+            this.reset();
+        }
+
+        reset() {
+            this.position = new THREE.Vector3(this.isNPC ? 2000 : 0, 1000, this.isNPC ? -2000 : 0);
+            this.rotation = new THREE.Euler(0, this.isNPC ? Math.PI : 0, 0, 'YXZ');
+            this.speed = 60;
+            this.pitch = 0;
+            this.roll = 0;
+            this.yaw = this.isNPC ? Math.PI : 0;
             this.health = 100;
             this.ammo = 1000;
             this.lastShot = 0;
-            this.pitch = 0;
-            this.roll = 0;
-            this.yaw = isNPC ? Math.PI : 0;
+            this.isDead = false;
         }
 
         update(dt) {
-            if (!gameActive && !this.isNPC) return;
+            if (this.isDead) return;
 
             if (this.isNPC) this.updateAI(dt);
             else this.updatePlayer(dt);
 
-            const gravity = 0.15;
-            const dragCoeff = 0.005;
-            const liftCoeff = 0.12;
-
             const forward = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
 
-            // Physics: Speed changes with pitch
-            this.speed -= forward.y * gravity * 15 * dt;
-            this.speed -= this.speed * dragCoeff * dt;
+            // Speed mechanics
+            this.speed -= forward.y * 25 * dt; // Dive/Climb
+            this.speed -= this.speed * 0.0005; // Drag
 
-            if (this.speed < 15) this.pitch -= 0.02 * dt; // Stall
-            this.speed = Math.max(5, Math.min(120, this.speed));
+            if (this.speed < 20) this.pitch += 0.1 * dt; // Stall
+            this.speed = THREE.MathUtils.clamp(this.speed, 10, 180);
 
             this.rotation.set(this.pitch, this.yaw, this.roll, 'YXZ');
 
-            const moveVec = forward.clone().multiplyScalar(this.speed * dt);
-            this.position.add(moveVec);
-
-            // Lift and Gravity
-            this.position.y -= gravity * 5 * dt;
-            if (this.speed > 30) this.position.y += (this.speed - 30) * liftCoeff * dt;
+            const move = forward.clone().multiplyScalar(this.speed * dt * 50);
+            this.position.add(move);
 
             this.mesh.position.copy(this.position);
             this.mesh.rotation.copy(this.rotation);
 
-            // Terrain / Boundary
-            const groundH = getTerrainHeight(this.position.x, this.position.z);
-            if (this.position.y < groundH + 1) {
-                if (!this.isNPC && gameState === 'LAND' && Math.abs(this.position.x) < 20 && Math.abs(this.position.z - 1500) < 300) {
+            const h = getTerrainHeight(this.position.x, this.position.z);
+            if (this.position.y < h + 5) {
+                if (!this.isNPC && gameState === 'LANDING' && Math.abs(this.position.x) < 50 && Math.abs(this.position.z - 3000) < 500) {
                     this.checkLanding();
                 } else {
-                    this.explode();
+                    this.die("Crashed into terrain.");
                 }
             }
 
-            if (this.health <= 0) this.explode();
+            if (this.position.length() > WORLD_SIZE * 0.49) {
+                this.yaw += Math.PI * dt;
+            }
         }
 
         updatePlayer(dt) {
-            // Keyboard additions
-            if (keys['KeyW'] || keys['ArrowUp']) this.pitch -= 1.0 * dt;
-            if (keys['KeyS'] || keys['ArrowDown']) this.pitch += 1.0 * dt;
-            if (keys['KeyA'] || keys['ArrowLeft']) this.roll += 2.0 * dt;
-            if (keys['KeyD'] || keys['ArrowRight']) this.roll -= 2.0 * dt;
-
-            // Auto-level roll if not steering
-            if (!keys['KeyA'] && !keys['KeyD'] && !keys['ArrowLeft'] && !keys['ArrowRight'] && Math.abs(this.roll) > 0.01 && !document.pointerLockElement) {
-                this.roll *= (1 - 2 * dt);
+            const rotSpeed = 2.5 * dt;
+            if (document.pointerLockElement === gameCanvas) {
+                this.pitch += mouseY * 0.0002;
+                this.roll -= mouseX * 0.0004;
+                mouseX *= 0.8; mouseY *= 0.8;
             }
+            if (keys['KeyW'] || keys['ArrowUp']) this.pitch -= rotSpeed;
+            if (keys['KeyS'] || keys['ArrowDown']) this.pitch += rotSpeed;
+            if (keys['KeyA'] || keys['ArrowLeft']) this.roll += rotSpeed * 1.5;
+            if (keys['KeyD'] || keys['ArrowRight']) this.roll -= rotSpeed * 1.5;
 
-            this.yaw += this.roll * 0.5 * dt;
-            if (keys['ShiftLeft']) this.speed += 10 * dt;
-            if (keys['ControlLeft']) this.speed -= 10 * dt;
+            if (!keys['KeyA'] && !keys['KeyD'] && !keys['ArrowLeft'] && !keys['ArrowRight'] && Math.abs(mouseX) < 1) {
+                this.roll *= (1 - 4 * dt);
+            }
+            this.yaw += this.roll * 0.7 * dt;
+
+            if (keys['ShiftLeft']) this.speed += 30 * dt;
+            if (keys['ControlLeft']) this.speed -= 30 * dt;
 
             if (keys['Space'] || keys['Mouse0']) this.shoot();
-            this.pitch = Math.max(-1.4, Math.min(1.4, this.pitch));
+            this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
         }
 
         updateAI(dt) {
             if (!player) return;
-            const targetPos = player.position;
-            const dist = this.position.distanceTo(targetPos);
-            const localTarget = targetPos.clone().applyMatrix4(new THREE.Matrix4().copy(this.mesh.matrixWorld).invert());
+            const target = player.position.clone();
+            const localTarget = target.clone().applyMatrix4(new THREE.Matrix4().copy(this.mesh.matrixWorld).invert());
 
             if (localTarget.x > 5) this.roll -= 1.0 * dt;
             else if (localTarget.x < -5) this.roll += 1.0 * dt;
-            else this.roll *= 0.9;
+            else this.roll *= 0.95;
 
             if (localTarget.y > 5) this.pitch -= 0.5 * dt;
             else if (localTarget.y < -5) this.pitch += 0.5 * dt;
 
             this.yaw += this.roll * 0.5 * dt;
-            if (this.position.y < getTerrainHeight(this.position.x, this.position.z) + 100) this.pitch -= 1.0 * dt;
+            if (this.position.y < getTerrainHeight(this.position.x, this.position.z) + 200) this.pitch -= 1.5 * dt;
 
             const forward = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
-            const dirToPlayer = targetPos.clone().sub(this.position).normalize();
-            if (dist < 800 && forward.dot(dirToPlayer) > 0.9) this.shoot();
+            const dir = target.sub(this.position).normalize();
+            if (this.position.distanceTo(player.position) < 1200 && forward.dot(dir) > 0.97) this.shoot();
         }
 
         shoot() {
             const now = Date.now();
-            if (now - this.lastShot > 150 && this.ammo > 0) {
+            if (now - this.lastShot > 100 && this.ammo > 0) {
                 const forward = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
                 bullets.push({
-                    pos: this.position.clone().add(forward.clone().multiplyScalar(10)),
-                    vel: forward.clone().multiplyScalar(250),
+                    pos: this.position.clone().add(forward.clone().multiplyScalar(15)),
+                    vel: forward.clone().multiplyScalar(500),
                     owner: this,
-                    life: 2.0
+                    life: 2.5
                 });
                 this.lastShot = now;
                 this.ammo--;
@@ -220,185 +306,176 @@
         }
 
         checkLanding() {
-            if (this.speed < 50) {
+            if (this.speed < 55) {
                 gameActive = false;
                 document.exitPointerLock();
-                showStatus("MISSION COMPLETE", "You have successfully landed.");
+                showResult("MISSION SUCCESS", "Safe landing achieved.");
             } else {
-                this.explode();
+                this.die("Landing speed too high!");
             }
         }
 
-        explode() {
+        die(reason) {
+            this.isDead = true;
             this.health = 0;
             if (this.isNPC) {
                 scene.remove(this.mesh);
                 npc = null;
-                gameState = 'LAND';
+                gameState = 'LANDING';
+                showNotification("TARGET DESTROYED. RETURN TO BASE.");
             } else {
                 gameActive = false;
                 document.exitPointerLock();
-                showStatus("GAME OVER", "Your aircraft was destroyed.");
+                showResult("MISSION FAILED", reason);
             }
         }
     }
 
-    function getTerrainHeight(x, z) {
-        const dist = Math.sqrt(x*x + z*z);
-        if (dist > worldSize * 0.45) return (dist - worldSize * 0.45) * 0.8;
-        return Math.sin(x * 0.01) * Math.cos(z * 0.01) * 15;
+    function drawHUD() {
+        hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+        if (!player) return;
+
+        hudCtx.fillStyle = '#0f0';
+        hudCtx.font = 'bold 20px monospace';
+
+        hudCtx.fillText(`SPD: ${Math.round(player.speed * 2)} KT`, 40, 60);
+        hudCtx.fillText(`ALT: ${Math.round(player.position.y * 3.3)} FT`, 40, 90);
+        hudCtx.fillText(`AMMO: ${player.ammo}`, 40, 120);
+        hudCtx.fillText(`HP:`, 40, 150);
+        hudCtx.strokeStyle = '#0f0';
+        hudCtx.strokeRect(80, 135, 100, 20);
+        hudCtx.fillRect(80, 135, Math.max(0, player.health), 20);
+
+        hudCtx.textAlign = 'center';
+        hudCtx.fillStyle = '#ff0';
+        hudCtx.fillText(`${gameState === 'DOGFIGHT' ? 'DOGFIGHT' : 'RETURN TO BASE'}`, hudCanvas.width / 2, 40);
+
+        const targetPos = (gameState === 'DOGFIGHT' && npc) ? npc.position : new THREE.Vector3(0, 10, 3000);
+        const dist = Math.round(player.position.distanceTo(targetPos));
+        hudCtx.fillText(`DIST: ${dist}m`, hudCanvas.width / 2, 70);
+
+        const vec = targetPos.clone().project(camera);
+        if (vec.z < 1) {
+            const tx = (vec.x + 1) / 2 * hudCanvas.width;
+            const ty = -(vec.y - 1) / 2 * hudCanvas.height;
+            hudCtx.strokeStyle = 'red';
+            hudCtx.lineWidth = 2;
+            hudCtx.strokeRect(tx - 30, ty - 30, 60, 60);
+        }
+
+        const centerX = hudCanvas.width / 2;
+        const centerY = hudCanvas.height / 2;
+        hudCtx.strokeStyle = 'rgba(0, 255, 0, 0.6)';
+        hudCtx.beginPath();
+        hudCtx.arc(centerX, centerY, 40, 0, Math.PI*2);
+        hudCtx.moveTo(centerX - 60, centerY); hudCtx.lineTo(centerX + 60, centerY);
+        hudCtx.moveTo(centerX, centerY - 60); hudCtx.lineTo(centerX, centerY + 60);
+        hudCtx.stroke();
+        hudCtx.textAlign = 'left';
     }
 
-    function createWorld() {
-        const geo = new THREE.PlaneGeometry(worldSize, worldSize, 100, 100);
-        const pos = geo.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-            pos.setZ(i, getTerrainHeight(pos.getX(i), pos.getY(i)));
-        }
-        geo.computeVertexNormals();
-        const mat = new THREE.MeshStandardMaterial({ color: 0x2d5a27, flatShading: true });
-        const terrain = new THREE.Mesh(geo, mat);
-        terrain.rotation.x = -Math.PI / 2;
-        scene.add(terrain);
-
-        // Runway
-        const rGroup = new THREE.Group();
-        const rGeo = new THREE.PlaneGeometry(40, 600);
-        const rMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        const runway = new THREE.Mesh(rGeo, rMat);
-        runway.rotation.x = -Math.PI / 2;
-        rGroup.add(runway);
-        for (let i = -300; i <= 300; i += 50) {
-            const l = new THREE.Mesh(new THREE.SphereGeometry(1.5), new THREE.MeshBasicMaterial({color: 0x00ff00}));
-            l.position.set(-22, 1, i);
-            rGroup.add(l);
-            const r = l.clone(); r.position.x = 22;
-            rGroup.add(r);
-        }
-        rGroup.position.set(0, 1.5, 1500);
-        scene.add(rGroup);
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-        sun.position.set(1000, 2000, 1000);
-        scene.add(sun);
+    let notifications = [];
+    function showNotification(text) {
+        notifications.push({ text, time: Date.now() });
     }
 
-    async function loadGame() {
+    function showResult(title, msg) {
+        gameOverOverlay.style.display = 'block';
+        document.getElementById('result-title').innerText = title;
+        document.getElementById('result-msg').innerText = msg;
+        uiLayer.style.display = 'flex';
+    }
+
+    async function initGame() {
+        createWorld();
         try {
             const loader = new THREE.GLTFLoader();
             const gltf = await new Promise((res, rej) => {
                 loader.load('fighterjet1.glb', res, (xhr) => {
-                    loadingDiv.innerText = `LOADING FIGHTER... ${Math.round(xhr.loaded / (xhr.total || 1000000) * 100)}%`;
+                    if (xhr.lengthComputable) {
+                        loadingScreen.innerText = `LOADING... ${Math.round(xhr.loaded / xhr.total * 100)}%`;
+                    }
                 }, rej);
             });
             planeModel = gltf.scene;
             const box = new THREE.Box3().setFromObject(planeModel);
             const size = box.getSize(new THREE.Vector3()).length();
-            const scale = 8 / size;
-            planeModel.scale.set(scale, scale, scale);
-
-            loadingDiv.style.display = 'none';
-            overlay.style.display = 'block';
-
-            createWorld();
-            player = new Plane(false);
-            npc = new Plane(true);
-            animate();
-        } catch (err) {
-            console.error(err);
-            loadingDiv.innerText = "FAILED TO LOAD fighterjet1.glb";
+            planeModel.scale.setScalar(15 / size);
+            planeModel.rotateY(Math.PI);
+        } catch (e) {
+            console.warn("Using placeholders");
         }
-    }
 
-    function showStatus(title, msg) {
-        overlay.style.display = 'block';
-        document.getElementById('status-title').innerText = title;
-        document.getElementById('status-msg').innerText = msg;
+        player = new Aircraft(false);
+        npc = new Aircraft(true);
+        loadingScreen.style.display = 'none';
+        uiLayer.style.display = 'flex';
+        animate();
     }
 
     let camMode = 0;
-    window.addEventListener('keydown', e => { if(e.code === 'KeyC') camMode = (camMode + 1) % 3; });
+    window.addEventListener('keydown', e => {
+        if(e.code === 'KeyC') {
+            camMode = (camMode + 1) % 3;
+            console.log("CamMode:", camMode);
+        }
+    });
 
     function animate() {
         requestAnimationFrame(animate);
         const dt = 1/60;
 
-        player.update(dt);
-        if (npc) npc.update(dt);
-
-        bullets.forEach((b, i) => {
-            b.pos.add(b.vel.clone().multiplyScalar(dt));
-            b.life -= dt;
-            if (b.life <= 0) bullets.splice(i, 1);
-            else {
-                if (npc && b.owner === player && b.pos.distanceTo(npc.position) < 20) {
-                    npc.health -= 10; bullets.splice(i, 1);
-                }
-                if (b.owner === npc && b.pos.distanceTo(player.position) < 15) {
-                    player.health -= 5; bullets.splice(i, 1);
-                }
+        if (gameActive) {
+            player.update(dt);
+            if (npc) {
+                npc.update(dt);
+                bullets.forEach((b, i) => {
+                    b.pos.add(b.vel.clone().multiplyScalar(dt));
+                    b.life -= dt;
+                    if (b.life <= 0) {
+                        bullets.splice(i, 1);
+                    } else {
+                        if (b.owner === player && b.pos.distanceTo(npc.position) < 30) {
+                            npc.health -= 15; bullets.splice(i, 1);
+                            if (npc.health <= 0) npc.die();
+                        }
+                        if (b.owner === npc && b.pos.distanceTo(player.position) < 20) {
+                            player.health -= 8; bullets.splice(i, 1);
+                            if (player.health <= 0) player.die("Shot down.");
+                        }
+                    }
+                });
             }
-        });
+        }
 
-        if (camMode === 0) {
-            const off = new THREE.Vector3(0, 5, -15).applyEuler(player.rotation);
-            camera.position.lerp(player.position.clone().add(off), 0.1);
-            camera.lookAt(player.position);
-        } else if (camMode === 1) {
-            const off = new THREE.Vector3(0, 1.5, 3).applyEuler(player.rotation);
-            camera.position.copy(player.position.clone().add(off));
-            camera.lookAt(player.position.clone().add(new THREE.Vector3(0,0,10).applyEuler(player.rotation)));
-        } else {
-            camera.position.set(player.position.x, player.position.y + 100, player.position.z);
-            camera.lookAt(player.position);
+        if (player) {
+            if (camMode === 0) { // Chase
+                const offset = new THREE.Vector3(0, 10, -30).applyEuler(player.rotation);
+                camera.position.lerp(player.position.clone().add(offset), 0.1);
+                camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 3, 0)));
+            } else if (camMode === 1) { // Cockpit
+                const offset = new THREE.Vector3(0, 3, 6).applyEuler(player.rotation);
+                camera.position.copy(player.position.clone().add(offset));
+                camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 0, 20).applyEuler(player.rotation)));
+            } else { // Top
+                camera.position.set(player.position.x, player.position.y + 300, player.position.z);
+                camera.lookAt(player.position);
+            }
         }
 
         renderer.render(scene, camera);
         drawHUD();
+        const now = Date.now();
+        notifications = notifications.filter(n => now - n.time < 5000);
+        hudCtx.textAlign = 'center'; hudCtx.font = 'bold 30px monospace';
+        notifications.forEach((n, i) => {
+            hudCtx.fillStyle = `rgba(255, 255, 255, ${1 - (now - n.time) / 5000})`;
+            hudCtx.fillText(n.text, hudCanvas.width / 2, 150 + i * 45);
+        });
+        hudCtx.textAlign = 'left';
     }
 
-    function drawHUD() {
-        ctx.clearRect(0,0,hudCanvas.width, hudCanvas.height);
-        if (!player) return;
-
-        ctx.fillStyle = '#0f0';
-        ctx.font = 'bold 20px Courier New';
-        ctx.fillText(`SPD: ${Math.round(player.speed * 3)}`, 20, 40);
-        ctx.fillText(`ALT: ${Math.round(player.position.y * 5)}`, 20, 70);
-        ctx.fillText(`AMMO: ${player.ammo}`, 20, 100);
-
-        ctx.fillText(`HP:`, 20, 130);
-        ctx.strokeStyle = '#0f0';
-        ctx.strokeRect(60, 115, 100, 15);
-        ctx.fillRect(60, 115, Math.max(0, player.health), 15);
-
-        ctx.fillStyle = 'yellow';
-        ctx.fillText(`OBJ: ${gameState === 'DESTROY_NPC' ? 'DESTROY ENEMY' : 'LAND AT BASE'}`, 20, 170);
-
-        const target = (gameState === 'DESTROY_NPC' && npc) ? npc.position : new THREE.Vector3(0, 1.5, 1500);
-        const dist = Math.round(player.position.distanceTo(target));
-        ctx.fillText(`DIST: ${dist}m`, 20, 200);
-
-        const vec = target.clone().project(camera);
-        if (vec.z < 1) {
-            const x = (vec.x + 1) / 2 * hudCanvas.width;
-            const y = -(vec.y - 1) / 2 * hudCanvas.height;
-            ctx.strokeStyle = 'red';
-            ctx.strokeRect(x - 20, y - 20, 40, 40);
-        }
-
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-        ctx.beginPath();
-        ctx.arc(hudCanvas.width/2, hudCanvas.height/2, 20, 0, Math.PI*2);
-        ctx.moveTo(hudCanvas.width/2 - 30, hudCanvas.height/2);
-        ctx.lineTo(hudCanvas.width/2 + 30, hudCanvas.height/2);
-        ctx.moveTo(hudCanvas.width/2, hudCanvas.height/2 - 30);
-        ctx.lineTo(hudCanvas.width/2, hudCanvas.height/2 + 30);
-        ctx.stroke();
-    }
-
-    loadGame();
+    initGame();
     </script>
 </body>
 </html>
