@@ -3,43 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Random Movie Generator</title>
+    <title>3D Fighter Jet - NPC Battle</title>
     <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
-    <header>
-        <h1>Random Movie Generator</h1>
-        <button id="settings-btn">Settings</button>
-    </header>
+    <div id="game-container"></div>
+    <div id="crosshair"></div>
 
-    <main>
-        <div id="movie-display">
-            <p>Click "Find a Movie" to get your first suggestion!</p>
+    <div id="hud">
+        <div id="speed-display" class="hud-item">Speed: 0 mph</div>
+        <div id="altitude-display" class="hud-item">Altitude: 0 ft</div>
+        <div id="ammo-display" class="hud-item">Ammo: 1000</div>
+        <div id="health-bar" class="hud-item">
+            Health: <div id="health-container"><div id="health-fill"></div></div>
         </div>
-        <button id="find-movie-btn">Find a Movie</button>
-    </main>
-
-    <div id="settings-panel" class="hidden">
-        <h2>Settings</h2>
-        <form id="settings-form">
-            <label for="genre">Genre:</label>
-            <select id="genre" name="genre">
-                <!-- Genre options will be populated here -->
-            </select>
-
-            <label for="start-year">Start Year:</label>
-            <input type="number" id="start-year" name="start-year" min="1900" max="2024">
-
-            <label for="end-year">End Year:</label>
-            <input type="number" id="end-year" name="end-year" min="1900" max="2024">
-
-            <label for="custom-url">Custom URL:</label>
-            <input type="url" id="custom-url" name="custom-url" placeholder="https://www.example.com">
-
-            <button type="submit">Save</button>
-        </form>
+        <div id="objective-display" class="hud-item" style="color: #ff0;">Obj: Destroy NPC</div>
+        <div id="debug-info" style="color: yellow; font-size: 12px;">Initializing...</div>
     </div>
 
-    <script src="script.js"></script>
+    <div id="message-overlay" class="hidden">
+        <div id="message-content">
+            <h1 id="message-text">GAME OVER</h1>
+            <button id="restart-btn">Restart Mission</button>
+        </div>
+    </div>
+
+    <div id="controls-hint">
+        WASD/Arrows: Throttle & Roll | Mouse: Pitch & Yaw | Click: Shoot | C: Toggle Camera
+    </div>
+
+    <script type="module" src="script.js"></script>
 </body>
 </html>
