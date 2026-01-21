@@ -42,15 +42,25 @@
         <div id="ui-layer" style="display: none;">
             <div id="start-overlay" class="overlay-box">
                 <h1>FIGHTER ACE</h1>
-                <p>MISSION: DESTROY THE ROGUE DRONE AND RETURN TO BASE.</p>
-                <div class="controls-hint">
-                    <b>W / S / A / D</b> or <b>ARROWS</b> to Pitch and Roll<br>
-                    <b>MOUSE</b> to Steer (Click for Pointer Lock)<br>
-                    <b>SPACE</b> or <b>LEFT CLICK</b> to Fire Machine Guns<br>
-                    <b>SHIFT / CTRL</b> to Adjust Throttle<br>
-                    <b>C</b> to Change Camera View
+                <div id="mode-selection">
+                    <p>SELECT FLIGHT MODE</p>
+                    <button id="btn-solo">SOLO MISSION</button>
+                    <button id="btn-versus">LOCAL VERSUS</button>
                 </div>
-                <button id="start-button">Engage Engines</button>
+                <div id="controls-info" style="display: none;">
+                    <p id="mission-text">MISSION: DESTROY THE ROGUE DRONE AND RETURN TO BASE.</p>
+                    <div class="controls-hint" id="p1-controls">
+                        <b>PLAYER 1 (WASD + MOUSE)</b><br>
+                        W/S/A/D: Pitch/Roll | MOUSE: Steer<br>
+                        SPACE/CLICK: Fire | SHIFT/CTRL: Throttle
+                    </div>
+                    <div class="controls-hint" id="p2-controls" style="display: none;">
+                        <b>PLAYER 2 (ARROWS)</b><br>
+                        ARROWS: Pitch/Roll | ENTER: Fire<br>
+                        [ / ]: Throttle
+                    </div>
+                    <button id="start-button">Engage Engines</button>
+                </div>
             </div>
 
             <div id="game-over-overlay" class="overlay-box" style="display: none;">
@@ -72,11 +82,17 @@
 
     let gameActive = false;
     let gameState = 'DOGFIGHT';
+    let gameMode = 'SINGLE'; // 'SINGLE' or 'VERSUS'
     let planeModel = null;
     let player = null;
+    let player2 = null;
     let npc = null;
     let bullets = [];
     const keys = {};
+
+    const bulletGeometry = new THREE.CylinderGeometry(0.8, 0.8, 20, 8);
+    bulletGeometry.rotateX(Math.PI / 2);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
 
     const gameCanvas = document.getElementById('gameCanvas');
     const hudCanvas = document.getElementById('hudCanvas');
@@ -92,6 +108,7 @@
     scene.fog = new THREE.FogExp2(0x6699cc, 0.0001);
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 30000);
+    const camera2 = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 30000);
     const renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -120,14 +137,38 @@
     });
 
     gameCanvas.addEventListener('mousedown', () => {
-        if (gameActive) gameCanvas.requestPointerLock();
+        if (gameActive && gameMode === 'SINGLE') gameCanvas.requestPointerLock();
+    });
+
+    document.getElementById('btn-solo').addEventListener('click', () => {
+        gameMode = 'SINGLE';
+        document.getElementById('mode-selection').style.display = 'none';
+        document.getElementById('controls-info').style.display = 'block';
+    });
+
+    document.getElementById('btn-versus').addEventListener('click', () => {
+        gameMode = 'VERSUS';
+        document.getElementById('mode-selection').style.display = 'none';
+        document.getElementById('controls-info').style.display = 'block';
+        document.getElementById('p2-controls').style.display = 'block';
+        document.getElementById('mission-text').innerText = "VERSUS MODE: DOGFIGHT UNTIL ONE REMAINS.";
     });
 
     startButton.addEventListener('click', () => {
         startOverlay.style.display = 'none';
         gameActive = true;
-        gameCanvas.requestPointerLock();
+        if (gameMode === 'SINGLE') gameCanvas.requestPointerLock();
+        setupGameEntities();
     });
+
+    function setupGameEntities() {
+        player = new Aircraft(0); // Player 1
+        if (gameMode === 'VERSUS') {
+            player2 = new Aircraft(2); // Player 2
+        } else {
+            npc = new Aircraft(1); // NPC
+        }
+    }
 
     function getTerrainHeight(x, z) {
         const d = Math.sqrt(x*x + z*z);
@@ -176,8 +217,9 @@
     }
 
     class Aircraft {
-        constructor(isNPC = false) {
-            this.isNPC = isNPC;
+        constructor(type = 0) {
+            // type: 0 = P1, 1 = NPC, 2 = P2
+            this.type = type;
             this.mesh = new THREE.Group();
 
             if (planeModel) {
@@ -185,10 +227,10 @@
                 this.mesh.add(model);
             }
 
-            // Add visible box for both to be sure
+            const color = (type === 1) ? 0xff0000 : (type === 2 ? 0xffff00 : 0x0000ff);
             const placeholder = new THREE.Mesh(
                 new THREE.BoxGeometry(4, 2, 10),
-                new THREE.MeshStandardMaterial({color: isNPC ? 0xff0000 : 0x0000ff, transparent: true, opacity: planeModel ? 0.3 : 1.0})
+                new THREE.MeshStandardMaterial({color: color, transparent: true, opacity: planeModel ? 0.3 : 1.0})
             );
             this.mesh.add(placeholder);
 
@@ -197,12 +239,15 @@
         }
 
         reset() {
-            this.position = new THREE.Vector3(this.isNPC ? 2000 : 0, 1000, this.isNPC ? -2000 : 0);
-            this.rotation = new THREE.Euler(0, this.isNPC ? Math.PI : 0, 0, 'YXZ');
+            if (this.type === 0) this.position = new THREE.Vector3(-100, 1000, 0);
+            else if (this.type === 1) this.position = new THREE.Vector3(2000, 1000, -2000);
+            else if (this.type === 2) this.position = new THREE.Vector3(100, 1000, 0);
+
+            this.rotation = new THREE.Euler(0, (this.type === 1) ? Math.PI : 0, 0, 'YXZ');
             this.speed = 60;
             this.pitch = 0;
             this.roll = 0;
-            this.yaw = this.isNPC ? Math.PI : 0;
+            this.yaw = (this.type === 1) ? Math.PI : 0;
             this.health = 100;
             this.ammo = 1000;
             this.lastShot = 0;
@@ -212,7 +257,7 @@
         update(dt) {
             if (this.isDead) return;
 
-            if (this.isNPC) this.updateAI(dt);
+            if (this.type === 1) this.updateAI(dt);
             else this.updatePlayer(dt);
 
             const forward = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
@@ -248,25 +293,34 @@
 
         updatePlayer(dt) {
             const rotSpeed = 2.5 * dt;
-            if (document.pointerLockElement === gameCanvas) {
-                this.pitch += mouseY * 0.0002;
-                this.roll -= mouseX * 0.0004;
-                mouseX *= 0.8; mouseY *= 0.8;
-            }
-            if (keys['KeyW'] || keys['ArrowUp']) this.pitch -= rotSpeed;
-            if (keys['KeyS'] || keys['ArrowDown']) this.pitch += rotSpeed;
-            if (keys['KeyA'] || keys['ArrowLeft']) this.roll += rotSpeed * 1.5;
-            if (keys['KeyD'] || keys['ArrowRight']) this.roll -= rotSpeed * 1.5;
+            if (this.type === 0) { // P1
+                if (document.pointerLockElement === gameCanvas) {
+                    this.pitch += mouseY * 0.0002;
+                    this.roll -= mouseX * 0.0004;
+                    mouseX *= 0.8; mouseY *= 0.8;
+                }
+                if (keys['KeyW']) this.pitch -= rotSpeed;
+                if (keys['KeyS']) this.pitch += rotSpeed;
+                if (keys['KeyA']) this.roll += rotSpeed * 1.5;
+                if (keys['KeyD']) this.roll -= rotSpeed * 1.5;
 
-            if (!keys['KeyA'] && !keys['KeyD'] && !keys['ArrowLeft'] && !keys['ArrowRight'] && Math.abs(mouseX) < 1) {
-                this.roll *= (1 - 4 * dt);
+                if (!keys['KeyA'] && !keys['KeyD'] && Math.abs(mouseX) < 1) this.roll *= (1 - 4 * dt);
+                if (keys['ShiftLeft']) this.speed += 30 * dt;
+                if (keys['ControlLeft']) this.speed -= 30 * dt;
+                if (keys['Space'] || keys['Mouse0']) this.shoot();
+            } else { // P2
+                if (keys['ArrowUp']) this.pitch -= rotSpeed;
+                if (keys['ArrowDown']) this.pitch += rotSpeed;
+                if (keys['ArrowLeft']) this.roll += rotSpeed * 1.5;
+                if (keys['ArrowRight']) this.roll -= rotSpeed * 1.5;
+
+                if (!keys['ArrowLeft'] && !keys['ArrowRight']) this.roll *= (1 - 4 * dt);
+                if (keys['BracketRight']) this.speed += 30 * dt;
+                if (keys['BracketLeft']) this.speed -= 30 * dt;
+                if (keys['Enter']) this.shoot();
             }
+
             this.yaw += this.roll * 0.7 * dt;
-
-            if (keys['ShiftLeft']) this.speed += 30 * dt;
-            if (keys['ControlLeft']) this.speed -= 30 * dt;
-
-            if (keys['Space'] || keys['Mouse0']) this.shoot();
             this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
         }
 
@@ -294,11 +348,19 @@
             const now = Date.now();
             if (now - this.lastShot > 100 && this.ammo > 0) {
                 const forward = new THREE.Vector3(0, 0, 1).applyEuler(this.rotation);
+                const pos = this.position.clone().add(forward.clone().multiplyScalar(25));
+
+                const bMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+                bMesh.position.copy(pos);
+                bMesh.quaternion.setFromEuler(this.rotation);
+                scene.add(bMesh);
+
                 bullets.push({
-                    pos: this.position.clone().add(forward.clone().multiplyScalar(15)),
-                    vel: forward.clone().multiplyScalar(500),
+                    pos: pos,
+                    vel: forward.clone().multiplyScalar(800),
                     owner: this,
-                    life: 2.5
+                    mesh: bMesh,
+                    life: 3.0
                 });
                 this.lastShot = now;
                 this.ammo--;
@@ -318,11 +380,15 @@
         die(reason) {
             this.isDead = true;
             this.health = 0;
-            if (this.isNPC) {
+            if (this.type === 1) { // NPC
                 scene.remove(this.mesh);
                 npc = null;
                 gameState = 'LANDING';
                 showNotification("TARGET DESTROYED. RETURN TO BASE.");
+            } else if (gameMode === 'VERSUS') {
+                const winner = (this.type === 0) ? "PLAYER 2" : "PLAYER 1";
+                gameActive = false;
+                showResult(`${winner} WINS`, reason);
             } else {
                 gameActive = false;
                 document.exitPointerLock();
@@ -335,43 +401,53 @@
         hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
         if (!player) return;
 
+        if (gameMode === 'SINGLE') {
+            drawPlayerHUD(player, camera, 0, 0, hudCanvas.width, hudCanvas.height);
+        } else {
+            drawPlayerHUD(player, camera, 0, 0, hudCanvas.width, hudCanvas.height / 2, "P1");
+            drawPlayerHUD(player2, camera2, 0, hudCanvas.height / 2, hudCanvas.width, hudCanvas.height / 2, "P2");
+        }
+    }
+
+    function drawPlayerHUD(p, cam, ox, oy, w, h, label = "") {
+        hudCtx.save();
+        hudCtx.translate(ox, oy);
         hudCtx.fillStyle = '#0f0';
-        hudCtx.font = 'bold 20px monospace';
+        hudCtx.font = 'bold 18px monospace';
 
-        hudCtx.fillText(`SPD: ${Math.round(player.speed * 2)} KT`, 40, 60);
-        hudCtx.fillText(`ALT: ${Math.round(player.position.y * 3.3)} FT`, 40, 90);
-        hudCtx.fillText(`AMMO: ${player.ammo}`, 40, 120);
-        hudCtx.fillText(`HP:`, 40, 150);
+        if(label) hudCtx.fillText(label, 20, 30);
+        hudCtx.fillText(`SPD: ${Math.round(p.speed * 2)} KT`, 20, 60);
+        hudCtx.fillText(`ALT: ${Math.round(p.position.y * 3.3)} FT`, 20, 85);
+        hudCtx.fillText(`AMMO: ${p.ammo}`, 20, 110);
+        hudCtx.fillText(`HP:`, 20, 135);
         hudCtx.strokeStyle = '#0f0';
-        hudCtx.strokeRect(80, 135, 100, 20);
-        hudCtx.fillRect(80, 135, Math.max(0, player.health), 20);
+        hudCtx.strokeRect(60, 120, 100, 15);
+        hudCtx.fillRect(60, 120, Math.max(0, p.health), 15);
 
-        hudCtx.textAlign = 'center';
-        hudCtx.fillStyle = '#ff0';
-        hudCtx.fillText(`${gameState === 'DOGFIGHT' ? 'DOGFIGHT' : 'RETURN TO BASE'}`, hudCanvas.width / 2, 40);
+        const target = (gameMode === 'SINGLE') ? (npc || {position: new THREE.Vector3(0,10,3000)}) : (p === player ? player2 : player);
+        if (target) {
+            const dist = Math.round(p.position.distanceTo(target.position));
+            hudCtx.textAlign = 'center';
+            hudCtx.fillText(`DIST: ${dist}m`, w/2, 30);
 
-        const targetPos = (gameState === 'DOGFIGHT' && npc) ? npc.position : new THREE.Vector3(0, 10, 3000);
-        const dist = Math.round(player.position.distanceTo(targetPos));
-        hudCtx.fillText(`DIST: ${dist}m`, hudCanvas.width / 2, 70);
-
-        const vec = targetPos.clone().project(camera);
-        if (vec.z < 1) {
-            const tx = (vec.x + 1) / 2 * hudCanvas.width;
-            const ty = -(vec.y - 1) / 2 * hudCanvas.height;
-            hudCtx.strokeStyle = 'red';
-            hudCtx.lineWidth = 2;
-            hudCtx.strokeRect(tx - 30, ty - 30, 60, 60);
+            const vec = target.position.clone().project(cam);
+            if (vec.z < 1) {
+                const tx = (vec.x + 1) / 2 * w;
+                const ty = -(vec.y - 1) / 2 * h;
+                hudCtx.strokeStyle = (p === player) ? 'red' : 'yellow';
+                hudCtx.strokeRect(tx - 20, ty - 20, 40, 40);
+            }
         }
 
-        const centerX = hudCanvas.width / 2;
-        const centerY = hudCanvas.height / 2;
-        hudCtx.strokeStyle = 'rgba(0, 255, 0, 0.6)';
+        // Central Crosshair
+        hudCtx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
         hudCtx.beginPath();
-        hudCtx.arc(centerX, centerY, 40, 0, Math.PI*2);
-        hudCtx.moveTo(centerX - 60, centerY); hudCtx.lineTo(centerX + 60, centerY);
-        hudCtx.moveTo(centerX, centerY - 60); hudCtx.lineTo(centerX, centerY + 60);
+        hudCtx.arc(w/2, h/2, 20, 0, Math.PI*2);
+        hudCtx.moveTo(w/2 - 30, h/2); hudCtx.lineTo(w/2 + 30, h/2);
+        hudCtx.moveTo(w/2, h/2 - 30); hudCtx.lineTo(w/2, h/2 + 30);
         hudCtx.stroke();
-        hudCtx.textAlign = 'left';
+
+        hudCtx.restore();
     }
 
     let notifications = [];
@@ -391,7 +467,7 @@
         try {
             const loader = new THREE.GLTFLoader();
             const gltf = await new Promise((res, rej) => {
-                loader.load('fighterjet1.glb', res, (xhr) => {
+                loader.load('plane.glb', res, (xhr) => {
                     if (xhr.lengthComputable) {
                         loadingScreen.innerText = `LOADING... ${Math.round(xhr.loaded / xhr.total * 100)}%`;
                     }
@@ -400,14 +476,12 @@
             planeModel = gltf.scene;
             const box = new THREE.Box3().setFromObject(planeModel);
             const size = box.getSize(new THREE.Vector3()).length();
-            planeModel.scale.setScalar(15 / size);
+            planeModel.scale.setScalar(45 / size);
             planeModel.rotateY(Math.PI);
         } catch (e) {
-            console.warn("Using placeholders");
+            console.warn("Using placeholders", e);
         }
 
-        player = new Aircraft(false);
-        npc = new Aircraft(true);
         loadingScreen.style.display = 'none';
         uiLayer.style.display = 'flex';
         animate();
@@ -421,49 +495,82 @@
         }
     });
 
+    function updateCamera(cam, target) {
+        if (!target) return;
+        if (camMode === 0) { // Chase
+            const offset = new THREE.Vector3(0, 15, -50).applyEuler(target.rotation);
+            cam.position.lerp(target.position.clone().add(offset), 0.1);
+            cam.lookAt(target.position.clone().add(new THREE.Vector3(0, 5, 0)));
+        } else if (camMode === 1) { // Cockpit
+            const offset = new THREE.Vector3(0, 3, 10).applyEuler(target.rotation);
+            cam.position.copy(target.position.clone().add(offset));
+            cam.lookAt(target.position.clone().add(new THREE.Vector3(0, 0, 40).applyEuler(target.rotation)));
+        } else { // Top
+            cam.position.set(target.position.x, target.position.y + 500, target.position.z);
+            cam.lookAt(target.position);
+        }
+    }
+
     function animate() {
         requestAnimationFrame(animate);
         const dt = 1/60;
 
         if (gameActive) {
-            player.update(dt);
-            if (npc) {
-                npc.update(dt);
-                bullets.forEach((b, i) => {
-                    b.pos.add(b.vel.clone().multiplyScalar(dt));
-                    b.life -= dt;
-                    if (b.life <= 0) {
-                        bullets.splice(i, 1);
-                    } else {
-                        if (b.owner === player && b.pos.distanceTo(npc.position) < 30) {
-                            npc.health -= 15; bullets.splice(i, 1);
-                            if (npc.health <= 0) npc.die();
-                        }
-                        if (b.owner === npc && b.pos.distanceTo(player.position) < 20) {
-                            player.health -= 8; bullets.splice(i, 1);
-                            if (player.health <= 0) player.die("Shot down.");
+            if (player) player.update(dt);
+            if (player2) player2.update(dt);
+            if (npc) npc.update(dt);
+
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.pos.add(b.vel.clone().multiplyScalar(dt));
+                b.mesh.position.copy(b.pos);
+                b.life -= dt;
+
+                let removed = false;
+                if (b.life <= 0) removed = true;
+                else {
+                    const targets = (gameMode === 'SINGLE') ? [player, npc] : [player, player2];
+                    for (const t of targets) {
+                        if (t && b.owner !== t && b.pos.distanceTo(t.position) < 45) {
+                            t.health -= 12;
+                            removed = true;
+                            if (t.health <= 0) t.die(b.owner === player ? "P1 shot you down." : "Shot down.");
+                            break;
                         }
                     }
-                });
+                }
+
+                if (removed) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                }
             }
         }
 
-        if (player) {
-            if (camMode === 0) { // Chase
-                const offset = new THREE.Vector3(0, 10, -30).applyEuler(player.rotation);
-                camera.position.lerp(player.position.clone().add(offset), 0.1);
-                camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 3, 0)));
-            } else if (camMode === 1) { // Cockpit
-                const offset = new THREE.Vector3(0, 3, 6).applyEuler(player.rotation);
-                camera.position.copy(player.position.clone().add(offset));
-                camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 0, 20).applyEuler(player.rotation)));
-            } else { // Top
-                camera.position.set(player.position.x, player.position.y + 300, player.position.z);
-                camera.lookAt(player.position);
-            }
+        if (gameMode === 'SINGLE') {
+            updateCamera(camera, player);
+            renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+            renderer.setScissorTest(false);
+            renderer.render(scene, camera);
+        } else {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            renderer.setScissorTest(true);
+
+            // P1 Top
+            updateCamera(camera, player);
+            renderer.setViewport(0, h/2, w, h/2);
+            renderer.setScissor(0, h/2, w, h/2);
+            renderer.render(scene, camera);
+
+            // P2 Bottom
+            updateCamera(camera2, player2);
+            renderer.setViewport(0, 0, w, h/2);
+            renderer.setScissor(0, 0, w, h/2);
+            renderer.render(scene, camera2);
         }
 
-        renderer.render(scene, camera);
         drawHUD();
         const now = Date.now();
         notifications = notifications.filter(n => now - n.time < 5000);
